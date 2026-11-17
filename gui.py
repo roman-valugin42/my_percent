@@ -7,6 +7,7 @@ from calculators import (
     calc_percent_of,
     calc_percent_ratio,
     calc_increase_decrease,
+    calc_payment_distribution,
 )
 
 
@@ -61,6 +62,8 @@ class PercentCalculator:
 
         for title, config in _TABS.items():
             PercentTab(notebook, config["func"], title)
+
+        PaymentTab(notebook, calc_payment_distribution)
 
 
 class PercentTab:
@@ -135,3 +138,98 @@ class PercentTab:
             except ValueError:
                 return None
         return values
+
+
+class PaymentTab:
+    """Вкладка распределения оплаты по ФИО."""
+
+    def __init__(self, parent: ttk.Notebook, calc_func) -> None:
+        self.calc_func = calc_func
+        self.frame = ttk.Frame(parent)
+        parent.add(self.frame, text="Распределение по ФИО")
+
+        ttk.Label(self.frame, text="Распределение оплаты по ФИО",
+                  style="Header.TLabel").pack(pady=(0, 12))
+
+        # Поле для списка ФИО
+        ttk.Label(self.frame, text="ФИО (каждое с новой строки):").pack(anchor="w", padx=4)
+        self.text = tk.Text(self.frame, width=50, height=8, wrap="word")
+        self.text.pack(padx=4, pady=(0, 8))
+
+        fields_frame = ttk.Frame(self.frame)
+        fields_frame.pack(fill=tk.X, padx=4)
+
+        self.entries: list[ttk.Entry] = []
+        fields_config = [("Сумма:", 8), ("%:", 8)]
+        for label_text, width in fields_config:
+            row = ttk.Frame(fields_frame)
+            row.pack(fill=tk.X, pady=2)
+            ttk.Label(row, text=label_text, width=8, anchor="e").pack(side=tk.LEFT, padx=(0, 8))
+            entry = ttk.Entry(row, width=width)
+            entry.pack(side=tk.LEFT)
+            entry.bind("<Return>", lambda _e: self._calculate())
+            self.entries.append(entry)
+
+        # Кнопки
+        btn_frame = ttk.Frame(self.frame)
+        btn_frame.pack(pady=10)
+        ttk.Button(btn_frame, text="Вычислить", command=self._calculate).pack(side=tk.LEFT, padx=4)
+        ttk.Button(btn_frame, text="Очистить", command=self._clear).pack(side=tk.LEFT, padx=4)
+
+        self.result_label = ttk.Label(self.frame, text="—", style="Result.TLabel")
+        self.result_label.pack(pady=(8, 0))
+
+        # Текст результата
+        self.result_text = tk.Text(self.frame, width=50, height=8, wrap="word",
+                                   state="disabled", font=("Consolas", 10))
+        self.result_text.pack(pady=(0, 8))
+
+    def _calculate(self) -> None:
+        names_raw = self.text.get("1.0", tk.END).strip()
+        names = [n for n in names_raw.splitlines() if n.strip()]
+
+        values: list[float] = []
+        for entry in self.entries:
+            text = entry.get().strip()
+            if not text:
+                return
+            try:
+                values.append(float(text))
+            except ValueError:
+                self.result_label.config(text="Некорректные числа.", style="Result.TLabel")
+                return
+
+        if not names:
+            self.result_label.config(text="Введите хотя бы одно ФИО.", style="Result.TLabel")
+            return
+
+        total, percent = values
+        result = self.calc_func(names, total, percent)
+
+        if not result:
+            self.result_label.config(text="Нет данных для расчёта.", style="Result.TLabel")
+            return
+
+        # Формируем текст результата
+        lines: list[str] = []
+        grand_total = 0.0
+        for name, amount in result.items():
+            lines.append(f"  {name:<25} {amount:>10.2f}")
+            grand_total += amount
+        lines.append(f"  {'—' * 34}")
+        lines.append(f"  {'Итого:':<25} {grand_total:>10.2f}")
+
+        self.result_text.config(state="normal")
+        self.result_text.delete("1.0", tk.END)
+        self.result_text.insert("1.0", "\n".join(lines))
+        self.result_text.config(state="disabled")
+        self.result_label.config(text=f"Участников: {len(result)}", style="Result.TLabel")
+
+    def _clear(self) -> None:
+        self.text.delete("1.0", tk.END)
+        for entry in self.entries:
+            entry.delete(0, tk.END)
+        self.result_label.config(text="—", style="Result.TLabel")
+        self.result_text.config(state="normal")
+        self.result_text.delete("1.0", tk.END)
+        self.result_text.config(state="disabled")
